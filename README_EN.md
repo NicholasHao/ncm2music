@@ -58,9 +58,36 @@ Uses a 256-byte periodic keystream with bulk big-integer XOR: a 216 MB Hi-Res fi
 **Q: Is it safe?**
 On startup the built-in AES engine is verified against the official FIPS-197 test vector. If the self-test fails, the program exits immediately rather than producing corrupt output.
 
-## Companion Tool
+## Companion Tool: Web Version (NCM音乐格式转换器.html)
 
-`NCM音乐格式转换器.html` in the same folder is the web version: double-click to open it in a browser, drag and drop files, same fully-local processing. Ideal for converting a few songs without touching the command line.
+`NCM音乐格式转换器.html` ("NCM Music Format Converter") in the same folder is the **web version** — a single, dependency-free file you can double-click and use, ideal when you'd rather not touch the command line.
+
+**Features**
+
+- Drag-and-drop batch conversion (drop multiple .ncm files at once)
+- Auto-detects MP3 / FLAC and reads metadata, showing title / artist / album right in the file list
+- Auto-embeds tags and cover art (can be toggled off on the page)
+- Per-file progress bars; auto-download on completion (or switch to manual per-file / download-all)
+- Output named `Artist - Title`, same rule as the CLI
+
+**How to Use**
+
+1. Double-click `NCM音乐格式转换器.html` to open it in any modern browser (Chrome / Edge / Firefox)
+2. Drag .ncm files onto the dashed drop zone (or click to pick files)
+3. Wait for the status to turn "✓ 转换完成" (conversion complete) — files are saved to your browser's download folder
+
+**Safety & Reliability**
+
+- Decryption happens entirely inside the browser — **files never touch any server** (works offline)
+- On page load the AES engine is verified against the official FIPS-197 test vector; a red warning is shown and the tool refuses to work if the self-test fails
+- Chunked streaming keeps memory usage flat; even a 216 MB Hi-Res file converts in seconds
+
+**Which version should I use?**
+
+| Scenario | Recommended |
+|----------|-------------|
+| Converting a few songs, prefer a GUI | Web version |
+| Batch-converting a whole library, need recursion / source deletion | CLI version |
 
 ## Disclaimer
 
