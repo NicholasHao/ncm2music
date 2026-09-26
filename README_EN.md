@@ -8,6 +8,8 @@ Convert NetEase Cloud Music's encrypted NCM files back to normal **MP3 / FLAC**.
 - **Full metadata**: Automatically embeds title / artist / album / cover art (ID3v2.3 for MP3, Vorbis Comment + PICTURE for FLAC)
 - **Smart naming**: Output files are named `Artist - Title.flac`; falls back to the original filename when metadata is unavailable
 
+> 🌐 **Live demo**: https://ncm2music.nicholashao.vip/ (web version — no download needed, conversion still happens entirely in your browser)
+>
 > 中文版文档见 [README.md](README.md)。
 
 ## Quick Start
@@ -60,7 +62,7 @@ On startup the built-in AES engine is verified against the official FIPS-197 tes
 
 ## Companion Tool: Web Version (NCM音乐格式转换器.html)
 
-`NCM音乐格式转换器.html` ("NCM Music Format Converter") in the same folder is the **web version** — a single, dependency-free file you can double-click and use, ideal when you'd rather not touch the command line.
+`NCM音乐格式转换器.html` ("NCM Music Format Converter") in the same folder is the **web version** — a single, dependency-free file you can double-click and use, ideal when you'd rather not touch the command line. A hosted copy is also available at **https://ncm2music.nicholashao.vip/** (still a pure front-end page — files never leave your browser).
 
 **Features**
 
