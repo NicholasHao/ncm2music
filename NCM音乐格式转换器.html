@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NCM 音乐格式转换器</title>
+<style>
+  :root {
+    --bg: #131417;
+    --panel: #1b1d21;
+    --panel2: #22252a;
+    --border: #2e3238;
+    --text: #e6e6e6;
+    --muted: #9aa0a8;
+    --accent: #4f9cf9;
+    --accent2: #7bc96f;
+    --warn: #e5a53f;
+    --err: #e05d5d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 16px 16px;
+  }
+  .wrap { width: 100%; max-width: 980px; }
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: .5px; }
+  h1 .note { color: var(--accent); }
+  .badge {
+    font-size: 12px; color: var(--accent2);
+    border: 1px solid #3a4a37; border-radius: 999px;
+    padding: 3px 10px; background: #1a2419;
+  }
+  #drop {
+    border: 2px dashed #3a3f47;
+    border-radius: 14px;
+    background: var(--panel);
+    padding: 44px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: #1c2129; }
+  #drop .icon { font-size: 34px; margin-bottom: 10px; }
+  #drop .t1 { font-size: 16px; margin-bottom: 6px; }
+  #drop .t2 { font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+  #drop .t2 b { color: var(--text); }
+  .bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 14px 2px 10px; }
+  .bar .spacer { flex: 1; }
+  label.opt { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  label.opt input { accent-color: var(--accent); }
+  button {
+    font-size: 13px; color: var(--text); background: var(--panel2);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 16px; cursor: pointer;
+  }
+  button:hover { background: #2a2e34; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary {
+    background: linear-gradient(135deg, #2a6fd6, #1e4fae);
+    border-color: #2a6fd6; font-weight: 600;
+  }
+  button.primary:hover { filter: brightness(1.15); }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 12px; overflow: hidden; }
+  th, td { padding: 10px 12px; font-size: 13px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; background: #17191d; }
+  td.num { color: var(--muted); width: 34px; }
+  td .fname { word-break: break-all; line-height: 1.45; }
+  td .sub { color: var(--muted); font-size: 12px; }
+  .st { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .st .dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
+  .st.wait .dot { background: #6b7280; }
+  .st.run .dot { background: var(--accent); animation: pulse 1s infinite; }
+  .st.done .dot { background: var(--accent2); }
+  .st.fail .dot { background: var(--err); }
+  .st .pg { font-size: 12px; color: var(--muted); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .pgbar { height: 4px; background: #2a2e34; border-radius: 4px; overflow: hidden; margin-top: 6px; }
+  .pgbar > i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 4px; transition: width .15s; }
+  tr.hide { display: none; }
+  .dl-link { color: var(--accent); text-decoration: none; font-size: 13px; cursor: pointer; background: none; border: none; padding: 0; }
+  .dl-link:hover { text-decoration: underline; }
+  footer {
+    margin-top: 22px; padding: 14px 4px 0;
+    border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--muted); line-height: 1.9;
+  }
+  footer .ok { color: var(--accent2); }
+  footer .bad { color: var(--err); }
+  .sum { font-size: 12.5px; color: var(--muted); margin: 6px 2px 0; }
+  .sum b { color: var(--text); }
+  .empty-hint { padding: 26px; text-align: center; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>NCM 音乐格式转换器 <span class="note">网易云音乐 → MP3 / FLAC</span></h1>
+    <span class="badge">🔒 全程本地解密 · 文件不上传</span>
+  </header>
+
+  <div id="drop">
+    <div class="icon">🎵⇢🎧</div>
+    <div class="t1">把 .ncm 文件拖到这里，或点击选择</div>
+    <div class="t2">
+      支持批量 · 输出 <b>MP3 / FLAC</b>（自动识别）· 自动写入歌名 / 艺术家 / 专辑 / 封面<br>
+      转换完全在<b>你的浏览器里</b>完成，不经过任何服务器
+    </div>
+    <input type="file" id="picker" multiple accept=".ncm" hidden>
+  </div>
+
+  <div class="bar">
+    <label class="opt"><input type="checkbox" id="optTags" checked>嵌入标签和封面</label>
+    <label class="opt"><input type="checkbox" id="optAuto" checked>转换完成自动下载</label>
+    <span class="spacer"></span>
+    <button id="btnClear" disabled>清空列表</button>
+    <button id="btnAll" class="primary" disabled>⬇ 全部下载</button>
+  </div>
+
+  <div id="listWrap" style="display:none">
+    <table>
+      <thead><tr><th class="num">#</th><th>文件</th><th>格式</th><th>大小</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div id="emptyHint" class="empty-hint">列表为空 —— 拖入 NCM 文件开始转换</div>
+  <div id="sum" class="sum"></div>
+
+  <footer>
+    <div id="selftest">正在自检加密引擎…</div>
+    <div>格式说明：NCM 内部实际是 MP3 或 FLAC，工具会自动识别输出；也会把内置的元数据（歌名 / 艺术家 / 专辑 / 封面图）写进输出文件。</div>
+    <div>仅供个人已下载音乐的格式转换与备份使用，请尊重版权。</div>
+  </footer>
+</div>
+
+<script>
+/* ==== 核心引擎（由 dev/core.mjs 自动内嵌，勿手改此段） ==== */
+// NCM 转换核心逻辑（无依赖，浏览器与 Node 通用）
+// 结构参考 taurusxin/ncmdump (anonymous5l/ncmdump 复刻) + 本地样本验证
+
+// ---------- GF(2^8) 与 AES-128 ----------
+function gfMul(a, b) {
+  let p = 0;
+  while (b) {
+    if (b & 1) p ^= a;
+    const hi = a & 0x80;
+    a = (a << 1) & 0xff;
+    if (hi) a ^= 0x1b;
+    b >>= 1;
+  }
+  return p;
+}
+
+// 运行时生成 S-box（GF 逆 + 仿射），配 FIPS-197 向量自检，避免手抄 256 字节出错
+function makeSboxes() {
+  const inv = new Uint8Array(256);
+  for (let x = 1; x < 256; x++) {
+    for (let y = 1; y < 256; y++) if (gfMul(x, y) === 1) { inv[x] = y; break; }
+  }
+  const s = new Uint8Array(256), si = new Uint8Array(256);
+  for (let x = 0; x < 256; x++) {
+    let i = inv[x], r = 0;
+    for (let b = 0; b < 8; b++) {
+      const bit = (i >> b) & 1;
+      const nb = bit ^ ((i >> ((b + 4) % 8)) & 1) ^ ((i >> ((b + 5) % 8)) & 1) ^
+        ((i >> ((b + 6) % 8)) & 1) ^ ((i >> ((b + 7) % 8)) & 1) ^ ((0x63 >> b) & 1);
+      r |= nb << b;
+    }
+    s[x] = r; si[r] = x;
+  }
+  return { s, si };
+}
+
+class AES128 {
+  constructor(key) { // key: Uint8Array(16)
+    const { s, si } = makeSboxes();
+    this.S = s; this.SI = si;
+    this.rk = this.expand(key);
+  }
+  expand(key) {
+    const w = new Uint32Array(44), K = new Uint8Array(key);
+    for (let i = 0; i < 4; i++) w[i] = (K[4*i] << 24) | (K[4*i+1] << 16) | (K[4*i+2] << 8) | K[4*i+3];
+    const RCON = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
+    for (let i = 4; i < 44; i++) {
+      let t = w[i - 1];
+      if (i % 4 === 0) {
+        t = t << 8 | t >>> 24; // RotWord
+        const b0 = this.S[(t >>> 24) & 0xff], b1 = this.S[(t >>> 16) & 0xff],
+              b2 = this.S[(t >>> 8) & 0xff], b3 = this.S[t & 0xff];
+        t = ((b0 ^ RCON[i / 4 - 1]) << 24) | (b1 << 16) | (b2 << 8) | b3; // SubWord + Rcon
+      }
+      w[i] = w[i - 4] ^ t;
+    }
+    const rk = [];
+    for (let r = 0; r < 11; r++) {
+      const k = new Uint8Array(16);
+      for (let c = 0; c < 4; c++) {
+        const v = w[4 * r + c];
+        k[4*c] = v >>> 24 & 0xff; k[4*c+1] = v >>> 16 & 0xff; k[4*c+2] = v >>> 8 & 0xff; k[4*c+3] = v & 0xff;
+      }
+      rk.push(k);
+    }
+    return rk;
+  }
+  addRK(st, k) { for (let i = 0; i < 16; i++) st[i] ^= k[i]; }
+  invShiftRows(st) {
+    for (let r = 1; r < 4; r++) {
+      const row = [st[r], st[r+4], st[r+8], st[r+12]];
+      for (let c = 0; c < 4; c++) st[r + 4*c] = row[((c - r) % 4 + 4) % 4];
+    }
+  }
+  invSubBytes(st) { for (let i = 0; i < 16; i++) st[i] = this.SI[st[i]]; }
+  invMixColumns(st) {
+    for (let c = 0; c < 4; c++) {
+      const o = 4 * c, s0 = st[o], s1 = st[o+1], s2 = st[o+2], s3 = st[o+3];
+      st[o]   = gfMul(s0, 14) ^ gfMul(s1, 11) ^ gfMul(s2, 13) ^ gfMul(s3, 9);
+      st[o+1] = gfMul(s0, 9)  ^ gfMul(s1, 14) ^ gfMul(s2, 11) ^ gfMul(s3, 13);
+      st[o+2] = gfMul(s0, 13) ^ gfMul(s1, 9)  ^ gfMul(s2, 14) ^ gfMul(s3, 11);
+      st[o+3] = gfMul(s0, 11) ^ gfMul(s1, 13) ^ gfMul(s2, 9)  ^ gfMul(s3, 14);
+    }
+  }
+  decryptBlock(src, dst) { // src/dst: 16 字节
+    const st = Uint8Array.from(src);
+    this.addRK(st, this.rk[10]);
+    for (let round = 9; round >= 1; round--) {
+      this.invShiftRows(st);
+      this.invSubBytes(st);
+      this.addRK(st, this.rk[round]);
+      this.invMixColumns(st);
+    }
+    this.invShiftRows(st);
+    this.invSubBytes(st);
+    this.addRK(st, this.rk[0]);
+    dst.set(st);
+  }
+}
+
+function aesEcbDecryptRaw(key, data) { // data 长度须为 16 倍数
+  const aes = new AES128(key);
+  const out = new Uint8Array(data.length);
+  const blk = new Uint8Array(16);
+  for (let i = 0; i < data.length; i += 16) {
+    aes.decryptBlock(data.subarray(i, i + 16), blk);
+    out.set(blk, i);
+  }
+  return out;
+}
+
+// 与 C++ 版一致的去 pad：最后一块的 pad 字节 >16 视为无 pad
+function unpadTail(dec) {
+  const total = dec.length;
+  if (total < 16) return dec;
+  const padByte = dec[total - 1];
+  const pad = padByte > 16 ? 0 : padByte;
+  return dec.subarray(0, total - pad);
+}
+
+function aesEcbDecrypt(key, data) { return unpadTail(aesEcbDecryptRaw(key, data)); }
+
+// ---------- NCM 常量与解析 ----------
+const CORE_KEY = Uint8Array.from([0x68, 0x7A, 0x48, 0x52, 0x41, 0x6D, 0x73, 0x6F, 0x35, 0x6B, 0x49, 0x6E, 0x62, 0x61, 0x78, 0x57]); // hzHRAmso5kInbaxW（注意小写k=0x6B，已实测验证）
+const MODIFY_KEY = Uint8Array.from([0x23, 0x31, 0x34, 0x6C, 0x6A, 0x6B, 0x5F, 0x21, 0x5C, 0x5D, 0x26, 0x30, 0x55, 0x3C, 0x27, 0x28]);
+const MODIFY_KEY_ALT = Uint8Array.from([0x23, 0x31, 0x34, 0x6C, 0x6A, 0x6B, 0x5F, 0x21, 0x5C, 0x5D, 0x26, 0x30, 0x29, 0x38, 0x02, 0x5E]);
+
+function xorArr(a, v) { const o = Uint8Array.from(a); for (let i = 0; i < o.length; i++) o[i] ^= v; return o; }
+function b64decode(s) {
+  const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const clean = s.replace(/[^A-Za-z0-9+/]/g, '');
+  let bits = 0, acc = 0; const out = [];
+  for (const ch of clean) {
+    acc = (acc << 6) | alpha.indexOf(ch); bits += 6;
+    if (bits >= 8) { bits -= 8; out.push((acc >> bits) & 0xff); }
+  }
+  return Uint8Array.from(out);
+}
+
+function buildKeyBox(key) {
+  const box = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) box[i] = i;
+  let swap = 0, c = 0, lastByte = 0, keyOffset = 0;
+  const keyLen = key.length;
+  for (let i = 0; i < 256; i++) {
+    swap = box[i];
+    c = (swap + lastByte + key[keyOffset++]) & 0xff;
+    if (keyOffset >= keyLen) keyOffset = 0;
+    box[i] = box[c];
+    box[c] = swap;
+    lastByte = c;
+  }
+  return box;
+}
+
+// 256 字节周期密钥流：stream[g & 0xff] 异或全局偏移 g
+function buildStream(box) {
+  const s = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) {
+    const j = (i + 1) & 0xff;
+    s[i] = box[(box[j] + box[(box[j] + j) & 0xff]) & 0xff];
+  }
+  return s;
+}
+
+// 解析 NCM 头，返回 { rc4Key, box, stream, meta, image, audioOffset }
+function parseNcmHeader(buf) {
+  let off = 0;
+  const magic = latin1(buf, 0, 8);
+  if (magic !== 'CTENFDAM') throw new Error('不是有效的 NCM 文件（魔数不匹配）');
+  off = 10;
+
+  // key data
+  const keyLen = u32le(buf, off); off += 4;
+  if (keyLen <= 0 || keyLen > 0x100000) throw new Error('NCM 头损坏（key 长度异常）');
+  const keyData = xorArr(buf.subarray(off, off + keyLen), 0x64); off += keyLen;
+  const decKey = aesEcbDecrypt(CORE_KEY, keyData);
+  if (latin1(decKey, 0, 17) !== 'neteasecloudmusic') throw new Error('core key 解密失败');
+  const rc4Key = decKey.subarray(17);
+  const box = buildKeyBox(rc4Key);
+  const stream = buildStream(box);
+
+  // meta
+  const metaLen = u32le(buf, off); off += 4;
+  let meta = null;
+  if (metaLen > 0 && metaLen < 0x100000) {
+    const mod = xorArr(buf.subarray(off, off + metaLen), 0x63); off += metaLen;
+    const b64 = latin1(mod, 22, mod.length); // 跳过 "163 key(Don't modify):"
+    for (const mk of [MODIFY_KEY, MODIFY_KEY_ALT]) {
+      try {
+        const dec = aesEcbDecrypt(mk, b64decode(b64));
+        const txt = utf8(dec);
+        if (txt.startsWith('music:')) { meta = JSON.parse(txt.slice(6)); break; }
+      } catch (e) { /* 尝试备用 key */ }
+    }
+  }
+
+  // skip crc32(4) + version(1)
+  off += 5;
+  const coverFrameLen = u32le(buf, off); off += 4;
+  const imgLen = u32le(buf, off); off += 4;
+  let image = null;
+  if (imgLen > 0) { image = buf.subarray(off, off + imgLen); off += imgLen; }
+  off += Math.max(0, coverFrameLen - imgLen);
+
+  return { rc4Key, box, stream, meta, image, audioOffset: off };
+}
+
+// 音频 XOR 解密（分段处理以支持进度回调）
+// baseOffset: 本 chunk 在音频流内的起始偏移（从 0 计）
+function xorDecryptAudio(chunk, stream, baseOffset) {
+  const out = new Uint8Array(chunk.length);
+  const start = baseOffset & 0xff; // 全局流索引 = (baseOffset + g) & 0xff
+  const n = chunk.length;
+  for (let g = 0; g < n; g++) out[g] = chunk[g] ^ stream[(g + start) & 0xff];
+  return out;
+}
+
+function sniffFormat(audio, meta) {
+  if (audio.length >= 4 && audio[0] === 0x49 && audio[1] === 0x44 && audio[2] === 0x33) return 'mp3';
+  if (audio.length >= 2 && audio[0] === 0xff && (audio[1] & 0xe0) === 0xe0) return 'mp3';
+  if (latin1(audio, 0, 4) === 'fLaC') return 'flac';
+  if (latin1(audio, 0, 4) === 'OggS') return 'ogg';
+  if (meta && typeof meta.format === 'string') return meta.format; // 兜底
+  return null;
+}
+
+// ---------- 标签写入 ----------
+function sanitizeName(s) { return (s || '').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').trim() || '未知'; }
+
+function pickMeta(meta) {
+  if (!meta) return null;
+  const artists = [];
+  if (Array.isArray(meta.artist)) {
+    for (const a of meta.artist) {
+      if (Array.isArray(a) && a.length) {
+        const first = a[0];
+        if (typeof first === 'string') artists.push(first);
+        else if (first && typeof first.name === 'string') artists.push(first.name);
+      } else if (a && typeof a === 'object' && typeof a.name === 'string') artists.push(a.name);
+      else if (typeof a === 'string') artists.push(a);
+    }
+  }
+  return {
+    title: typeof meta.musicName === 'string' ? meta.musicName : '',
+    artist: artists.join('、'),
+    album: typeof meta.album === 'string' ? meta.album : '',
+    format: typeof meta.format === 'string' ? meta.format : null,
+  };
+}
+
+// ID3v2.3 块构造（MP3 前置）
+function buildId3v3(m, image) {
+  const enc = new TextEncoder();
+  const frames = [];
+  function textFrame(id, text) {
+    const body = new Uint8Array(1 + text.length * 2 + 2); // 0x01 + BOM + UTF-16LE
+    body[0] = 0x01; body[1] = 0xff; body[2] = 0xfe;
+    for (let i = 0; i < text.length; i++) {
+      const c = text.charCodeAt(i);
+      body[3 + i * 2] = c & 0xff; body[4 + i * 2] = c >> 8;
+    }
+    frames.push({ id, data: body.subarray(0, 3 + text.length * 2) });
+  }
+  if (m.title) textFrame('TIT2', m.title);
+  if (m.artist) textFrame('TPE1', m.artist);
+  if (m.album) textFrame('TALB', m.album);
+  if (image && image.length) {
+    const mime = (image[0] === 0x89 && latin1(image, 1, 4) === 'PNG') ? 'image/png' : 'image/jpeg';
+    const mimeB = enc.encode(mime);
+    const body = new Uint8Array(1 + mimeB.length + 1 + 1 + 1 + image.length);
+    let p = 0;
+    body[p++] = 0x00; body.set(mimeB, p); p += mimeB.length;
+    body[p++] = 0x00; body[p++] = 0x03; body[p++] = 0x00; // mime 终止 + front cover + 空描述
+    body.set(image, p);
+    frames.push({ id: 'APIC', data: body });
+  }
+  if (!frames.length) return null;
+  let total = 0;
+  for (const f of frames) total += 10 + f.data.length;
+  const tagSize = total + 1024; // 尾部 padding
+  const tag = new Uint8Array(10 + tagSize);
+  tag[0] = 0x49; tag[1] = 0x44; tag[2] = 0x33; // "ID3"
+  tag[3] = 0x03; tag[4] = 0x00; tag[5] = 0x00;
+  // syncsafe size
+  tag[6] = (tagSize >>> 21) & 0x7f; tag[7] = (tagSize >>> 14) & 0x7f;
+  tag[8] = (tagSize >>> 7) & 0x7f; tag[9] = tagSize & 0x7f;
+  let p = 10;
+  for (const f of frames) {
+    tag.set(enc.encode(f.id), p);
+    const sz = f.data.length;
+    tag[p+4] = sz >>> 24; tag[p+5] = sz >>> 16 & 0xff; tag[p+6] = sz >>> 8 & 0xff; tag[p+7] = sz & 0xff;
+    tag.set(f.data, p + 10);
+    p += 10 + sz;
+  }
+  return tag;
+}
+
+// FLAC 标签块构造（插入 STREAMINFO 之后）
+function buildFlacMeta(m, image) {
+  const enc = new TextEncoder();
+  const blocks = [];
+  // VORBIS_COMMENT (type 4)
+  {
+    const vendor = enc.encode('ncm2music');
+    const fields = [];
+    if (m.title) fields.push('TITLE=' + m.title);
+    if (m.artist) fields.push('ARTIST=' + m.artist);
+    if (m.album) fields.push('ALBUM=' + m.album);
+    let bodyLen = 4 + vendor.length + 4;
+    const encs = fields.map(f => enc.encode(f));
+    for (const e of encs) bodyLen += 4 + e.length;
+    const body = new Uint8Array(bodyLen);
+    let p = 0;
+    body[p++] = vendor.length; body[p++] = 0; body[p++] = 0; body[p++] = 0; // LE
+    body.set(vendor, p); p += vendor.length;
+    body[p++] = encs.length; body[p++] = 0; body[p++] = 0; body[p++] = 0;
+    for (const e of encs) {
+      body[p++] = e.length; body[p++] = 0; body[p++] = 0; body[p++] = 0;
+      body.set(e, p); p += e.length;
+    }
+    blocks.push({ type: 4, data: body, last: false });
+  }
+  // PICTURE (type 6)
+  if (image && image.length) {
+    const mime = (image[0] === 0x89 && latin1(image, 1, 4) === 'PNG') ? 'image/png' : 'image/jpeg';
+    const mimeB = enc.encode(mime);
+    const body = new Uint8Array(4 + 4 + mimeB.length + 4 + 4 * 4 + 4 + image.length);
+    let p = 0;
+    body[p++] = 0; body[p++] = 0; body[p++] = 0; body[p++] = 3; // front cover
+    body[p++] = 0; body[p++] = 0; body[p++] = 0; body[p++] = mimeB.length;
+    body.set(mimeB, p); p += mimeB.length;
+    body[p++] = 0; body[p++] = 0; body[p++] = 0; body[p++] = 0; // 空 desc
+    for (let i = 0; i < 4; i++) { body[p++] = 0; body[p++] = 0; body[p++] = 0; body[p++] = 0; } // w/h/depth/colors
+    const dl = image.length;
+    body[p++] = dl >>> 24; body[p++] = dl >>> 16 & 0xff; body[p++] = dl >>> 8 & 0xff; body[p++] = dl & 0xff;
+    body.set(image, p);
+    blocks.push({ type: 6, data: body, last: true });
+  }
+  if (blocks.length) blocks[blocks.length - 1].last = true;
+  const out = [];
+  for (const b of blocks) {
+    const h = new Uint8Array(4);
+    h[0] = (b.last ? 0x80 : 0) | b.type;
+    const L = b.data.length;
+    h[1] = L >>> 16 & 0xff; h[2] = L >>> 8 & 0xff; h[3] = L & 0xff;
+    out.push(h, b.data);
+  }
+  return concat(out);
+}
+
+// 组装带标签的完整文件
+function assembleAudio(audio, fmt, m, image, embedTags) {
+  if (!embedTags || !m) return audio;
+  if (fmt === 'mp3') {
+    const hasId3 = audio.length >= 3 && audio[0] === 0x49 && audio[1] === 0x44 && audio[2] === 0x33;
+    if (hasId3) return audio; // 已有标签不覆盖
+    const tag = buildId3v3(m, image);
+    return tag ? concat([tag, audio]) : audio;
+  }
+  if (fmt === 'flac') {
+    // 扫描 metadata block 链，记录是否已有标签/封面以及最后一个块 header 的位置
+    let p = 4, last = 0, hasTag = false, hasPic = false, lastHdrAt = -1;
+    while (p + 4 <= audio.length && !last) {
+      const h = audio[p]; last = h & 0x80;
+      const type = h & 0x7f, len = (audio[p+1] << 16) | (audio[p+2] << 8) | audio[p+3];
+      if (type === 4) hasTag = true;
+      if (type === 6) hasPic = true;
+      lastHdrAt = p;
+      p += 4 + len;
+    }
+    const insertAt = p;
+    const mm = { title: hasTag ? '' : m.title, artist: hasTag ? '' : m.artist, album: hasTag ? '' : m.album };
+    const hasNew = (!hasTag && (mm.title || mm.artist || mm.album)) || (!hasPic && image && image.length);
+    if (!hasNew) return audio; // 没有可写内容，保持原样
+    const meta = buildFlacMeta(mm, hasPic ? null : image);
+    const out = Uint8Array.from(audio); // 完整副本，避免视图陷阱
+    if (lastHdrAt >= 0) out[lastHdrAt] &= 0x7f; // 原最后一个块的 last 标志由新块接管
+    return concat([out.subarray(0, insertAt), meta, out.subarray(insertAt)]);
+  }
+  return audio;
+}
+
+// ---------- 小工具 ----------
+function concat(arrs) {
+  let n = 0; for (const a of arrs) n += a.length;
+  const out = new Uint8Array(n);
+  let p = 0;
+  for (const a of arrs) { out.set(a, p); p += a.length; }
+  return out;
+}
+function latin1(buf, s, e) { let r = ''; for (let i = s; i < e; i++) r += String.fromCharCode(buf[i]); return r; }
+function utf8(buf) { return new TextDecoder('utf-8').decode(buf); }
+function u32le(buf, off) { return buf[off] | (buf[off+1] << 8) | (buf[off+2] << 16) | (buf[off+3] << 24); }
+
+
+
+// Node 环境下挂 globalThis.TextEncoder/TextDecoder 由 node 内置提供，无需处理
+/* ==== 核心引擎结束 ==== */
+</script>
+
+<script>
+/* ==== 应用逻辑 ==== */
+(() => {
+  const $ = id => document.getElementById(id);
+  const drop = $('drop'), picker = $('picker'), tbody = $('tbody');
+  const listWrap = $('listWrap'), emptyHint = $('emptyHint'), sum = $('sum');
+  const optTags = $('optTags'), optAuto = $('optAuto');
+  const btnAll = $('btnAll'), btnClear = $('btnClear');
+
+  // ---- 自检（FIPS-197 官方向量） ----
+  (function selfTest() {
+    const el = $('selftest');
+    try {
+      const key = Uint8Array.from([0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f]);
+      const aes = new AES128(key);
+      const cipher = Uint8Array.from([0x69,0xc4,0xe0,0xd8,0x6a,0x7b,0x04,0x30,0xd8,0xcd,0xb7,0x80,0x70,0xb4,0xc5,0x5a]);
+      const expect = Uint8Array.from([0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88,0x99,0xaa,0xbb,0xcc,0xdd,0xee,0xff]);
+      const out = new Uint8Array(16);
+      aes.decryptBlock(cipher, out);
+      let ok = true;
+      for (let i = 0; i < 16; i++) if (out[i] !== expect[i]) { ok = false; break; }
+      el.innerHTML = ok
+        ? '<span class="ok">✓ AES-128 引擎自检通过（FIPS-197 官方向量）</span>'
+        : '<span class="bad">✗ AES 引擎自检失败，请勿使用本页面</span>';
+    } catch (e) {
+      el.innerHTML = '<span class="bad">✗ 引擎初始化失败: ' + String(e).replace(/</g, '&lt;') + '</span>';
+    }
+  })();
+
+  // ---- 状态 ----
+  const files = []; // {file, row, status, fmt, blob, url, name, size}
+  let converting = false;
+
+  function fmtSize(n) {
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+    return n + ' B';
+  }
+  function refreshEmpty() {
+    listWrap.style.display = files.length ? '' : 'none';
+    emptyHint.style.display = files.length ? 'none' : '';
+    btnClear.disabled = !files.length;
+    btnAll.disabled = !files.some(f => f.blob);
+    const done = files.filter(f => f.status === 'done').length;
+    const fail = files.filter(f => f.status === 'fail').length;
+    sum.innerHTML = files.length
+      ? `共 <b>${files.length}</b> 个文件 · 成功 <b style="color:var(--accent2)">${done}</b>` + (fail ? ` · 失败 <b style="color:var(--err)">${fail}</b>` : '')
+      : '';
+  }
+  function addFiles(fileList) {
+    const arr = Array.from(fileList).filter(f => /\.ncm$/i.test(f.name));
+    arr.forEach((f, i) => {
+      const idx = files.length;
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td class="num">' + (idx + 1) + '</td>' +
+        '<td><div class="fname"></div><div class="sub"></div></td>' +
+        '<td class="f-format">—</td>' +
+        '<td class="f-size">' + fmtSize(f.size) + '</td>' +
+        '<td><span class="st wait"><span class="dot"></span><span class="pg">排队中</span></span><div class="pgbar" style="display:none"><i></i></div></td>' +
+        '<td class="f-act"></td>';
+      tr.querySelector('.fname').textContent = f.name;
+      tbody.appendChild(tr);
+      files.push({ file: f, row: tr, status: 'wait' });
+    });
+    refreshEmpty();
+    if (arr.length) startQueue();
+  }
+
+  function setStatus(entry, cls, text, progress) {
+    const st = entry.row.querySelector('.st');
+    st.className = 'st ' + cls;
+    st.querySelector('.pg').textContent = text;
+    const bar = entry.row.querySelector('.pgbar');
+    if (progress != null) {
+      bar.style.display = '';
+      bar.firstElementChild.style.width = (progress * 100).toFixed(1) + '%';
+    } else if (cls === 'done' || cls === 'fail') bar.style.display = 'none';
+  }
+  function fillInfo(entry, m, fmt) {
+    entry.row.querySelector('.f-format').textContent = (fmt || '?').toUpperCase();
+    const sub = entry.row.querySelector('.sub');
+    if (m && (m.title || m.artist || m.album)) {
+      sub.textContent = [m.artist, m.title].filter(Boolean).join(' - ') + (m.album ? ' 《' + m.album + '》' : '');
+    } else sub.textContent = '（无内嵌元数据）';
+  }
+  function buildName(entry, m, fmt) {
+    let base;
+    if (m && m.title && m.artist) base = sanitizeName(m.artist) + ' - ' + sanitizeName(m.title);
+    else if (m && m.title) base = sanitizeName(m.title);
+    else base = entry.file.name.replace(/\.ncm$/i, '');
+    return base + '.' + (fmt || 'mp3');
+  }
+  function bindDownload(entry) {
+    const cell = entry.row.querySelector('.f-act');
+    cell.innerHTML = '';
+    const a = document.createElement('button');
+    a.className = 'dl-link';
+    a.textContent = '⬇ 下载';
+    a.onclick = () => downloadOne(entry);
+    cell.appendChild(a);
+  }
+  function downloadOne(entry) {
+    if (!entry.blob) return;
+    if (!entry.url) entry.url = URL.createObjectURL(entry.blob);
+    const a = document.createElement('a');
+    a.href = entry.url; a.download = entry.name;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ---- 分块流式转换 ----
+  async function convertOne(entry, embedTags) {
+    const f = entry.file;
+    // 1) 读头部（先 2MB，封面超大则补读到 16MB）
+    let headBuf = new Uint8Array(await f.slice(0, Math.min(f.size, 2 * 1048576)).arrayBuffer());
+    let hdr;
+    try {
+      hdr = parseNcmHeader(headBuf);
+    } catch (e) {
+      const msg = String(e.message || e);
+      if (headBuf.length < f.size && /超出|length|bounds|越界|Broken/i.test(msg)) {
+        headBuf = new Uint8Array(await f.slice(0, Math.min(f.size, 16 * 1048576)).arrayBuffer());
+        hdr = parseNcmHeader(headBuf);
+      } else throw e;
+    }
+    const m = pickMeta(hdr.meta);
+
+    // 2) 流式解密音频
+    const CHUNK = 16 * 1048576; // 16MB，256 的倍数
+    const parts = [];
+    const total = f.size - hdr.audioOffset;
+    let pos = hdr.audioOffset, audioOff = 0;
+    while (pos < f.size) {
+      const end = Math.min(pos + CHUNK, f.size);
+      const chunk = new Uint8Array(await f.slice(pos, end).arrayBuffer());
+      parts.push(xorDecryptAudio(chunk, hdr.stream, audioOff));
+      audioOff += chunk.length;
+      pos = end;
+      setStatus(entry, 'run', '解密中 ' + fmtSize(audioOff) + ' / ' + fmtSize(total), audioOff / total);
+      await sleep(0);
+    }
+
+    // 3) 嗅探格式
+    const fmt = sniffFormat(parts[0], hdr.meta);
+    if (!fmt) throw new Error('无法识别音频格式（文件可能损坏）');
+    fillInfo(entry, m, fmt);
+    setStatus(entry, 'run', '写入标签…', 1);
+
+    // 4) 组装（标签注入仅改动头部，Blob 分段零拷贝）
+    let blobParts = parts;
+    if (embedTags && m) {
+      if (fmt === 'mp3') {
+        const first = parts[0];
+        const hasId3 = first.length >= 3 && first[0] === 0x49 && first[1] === 0x44 && first[2] === 0x33;
+        if (!hasId3) {
+          const tag = buildId3v3(m, hdr.image);
+          if (tag) blobParts = [tag, ...parts];
+        }
+      } else if (fmt === 'flac') {
+        const first = parts[0];
+        let p = 4, last = 0, hasTag = false, hasPic = false, lastHdrAt = -1;
+        while (p + 4 <= first.length && !last) {
+          const h = first[p]; last = h & 0x80;
+          const type = h & 0x7f, len = (first[p+1] << 16) | (first[p+2] << 8) | first[p+3];
+          if (type === 4) hasTag = true;
+          if (type === 6) hasPic = true;
+          lastHdrAt = p;
+          p += 4 + len;
+        }
+        const mm = { title: hasTag ? '' : m.title, artist: hasTag ? '' : m.artist, album: hasTag ? '' : m.album };
+        const hasNew = (!hasTag && (mm.title || mm.artist || mm.album)) || (!hasPic && hdr.image && hdr.image.length);
+        if (hasNew && p <= first.length) {
+          const meta = buildFlacMeta(mm, hasPic ? null : hdr.image);
+          const head = Uint8Array.from(first.subarray(0, p));
+          if (lastHdrAt >= 0) head[lastHdrAt] &= 0x7f;
+          blobParts = [head, meta, first.subarray(p), ...parts.slice(1)];
+        }
+      }
+    }
+    const blob = new Blob(blobParts);
+    entry.blob = blob;
+    entry.name = buildName(entry, m, fmt);
+    entry.fmt = fmt;
+  }
+
+  async function startQueue() {
+    if (converting) return;
+    converting = true;
+    const embedTags = optTags.checked;
+    while (true) {
+      const entry = files.find(e => e.status === 'wait');
+      if (!entry) break;
+      entry.status = 'run';
+      setStatus(entry, 'run', '读取中…', 0);
+      try {
+        await convertOne(entry, embedTags);
+        entry.status = 'done';
+        setStatus(entry, 'done', '✓ 转换完成');
+        bindDownload(entry);
+        if (optAuto.checked) downloadOne(entry);
+      } catch (e) {
+        entry.status = 'fail';
+        const msg = String(e.message || e);
+        setStatus(entry, 'fail', '✗ ' + msg);
+        entry.row.querySelector('.sub').textContent = '';
+      }
+      refreshEmpty();
+    }
+    converting = false;
+  }
+
+  // ---- 事件 ----
+  drop.addEventListener('click', () => picker.click());
+  picker.addEventListener('change', () => { addFiles(picker.files); picker.value = ''; });
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => e.preventDefault());
+
+  btnAll.addEventListener('click', async () => {
+    for (const f of files) {
+      if (f.blob) { downloadOne(f); await sleep(350); }
+    }
+  });
+  btnClear.addEventListener('click', () => {
+    files.forEach(f => { if (f.url) URL.revokeObjectURL(f.url); });
+    files.length = 0;
+    tbody.innerHTML = '';
+    refreshEmpty();
+  });
+})();
+</script>
+</body>
+</html>
