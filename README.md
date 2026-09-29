@@ -62,7 +62,7 @@ python ncm2music.py -m -o "D:\转换输出" "D:\Netease\CloudMusic"
 
 ## 配套工具：网页版（NCM音乐格式转换器.html）
 
-同目录下的 `NCM音乐格式转换器.html` 是**网页版**转换器，单文件、免安装、双击即用，适合不想碰命令行的场景。也可以直接使用在线部署版：**https://ncm2music.nicholashao.vip/**（同样是纯前端页面，文件不上传服务器）。
+同目录下的 `NCM音乐格式转换器.html` 是**网页版**转换器，单文件、免安装、双击即用，适合不想碰命令行的场景。也可以直接使用在线部署版：**https://ncm2music.nicholashao.vip/** （同样是纯前端页面，文件不上传服务器）。
 
 **功能特性**
 
