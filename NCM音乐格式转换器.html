@@ -439,6 +439,70 @@ function buildId3v3(m, image) {
   return tag;
 }
 
+// MP3 自带 ID3v2.3 时补充缺失帧（APIC 优先；与 Python 版 inject_mp3_id3 同逻辑）
+function injectMp3Id3(audio, m, image) {
+  if (audio.length < 10 || audio[3] !== 3) return null; // 只处理 v2.3
+  const flags = audio[5];
+  if (flags & 0x80 || flags & 0x40) return null; // unsync/压缩/扩展头不安全，不碰
+  const tagSize = (audio[6] << 21) | (audio[7] << 14) | (audio[8] << 7) | audio[9];
+  const framesEnd = 10 + tagSize;
+  if (framesEnd > audio.length) return null;
+  let p = 10;
+  const have = new Set();
+  while (p + 10 <= framesEnd) {
+    if (audio[p] === 0 && audio[p+1] === 0 && audio[p+2] === 0 && audio[p+3] === 0) break; // padding
+    const id = latin1(audio, p, p + 4);
+    const fsz = (audio[p+4] << 24) | (audio[p+5] << 16) | (audio[p+6] << 8) | audio[p+7];
+    if (fsz < 0 || p + 10 + fsz > framesEnd) return null;
+    have.add(id);
+    p += 10 + fsz;
+  }
+  const enc = new TextEncoder();
+  const want = [];
+  if (image && image.length && !have.has('APIC')) {
+    const mime = (image[0] === 0x89 && latin1(image, 1, 4) === 'PNG') ? 'image/png' : 'image/jpeg';
+    const mimeB = enc.encode(mime);
+    const body = new Uint8Array(1 + mimeB.length + 3 + image.length);
+    let q = 0;
+    body[q++] = 0x00; body.set(mimeB, q); q += mimeB.length;
+    body[q++] = 0x00; body[q++] = 0x03; body[q++] = 0x00; // mime 终止 + front cover + 空描述
+    body.set(image, q);
+    want.push({ id: 'APIC', data: body });
+  }
+  for (const [id, text] of [['TIT2', m.title], ['TPE1', m.artist], ['TALB', m.album]]) {
+    if (text && !have.has(id)) {
+      const body = new Uint8Array(3 + text.length * 2);
+      body[0] = 0x01; body[1] = 0xff; body[2] = 0xfe;
+      for (let i = 0; i < text.length; i++) {
+        const c = text.charCodeAt(i);
+        body[3 + i * 2] = c & 0xff; body[4 + i * 2] = c >> 8;
+      }
+      want.push({ id, data: body });
+    }
+  }
+  if (!want.length) return null;
+  let addLen = 0;
+  for (const w of want) addLen += 10 + w.data.length;
+  const newTagSize = tagSize + addLen;
+  if (newTagSize >= (1 << 28)) return null;
+  const out = new Uint8Array(audio.length + addLen);
+  out.set(audio.subarray(0, 6), 0);
+  out[6] = (newTagSize >>> 21) & 0x7f; out[7] = (newTagSize >>> 14) & 0x7f;
+  out[8] = (newTagSize >>> 7) & 0x7f; out[9] = newTagSize & 0x7f;
+  out.set(audio.subarray(10, p), 10); // 现有帧
+  let q2 = p;
+  for (const w of want) {
+    out.set(enc.encode(w.id), q2);
+    const sz = w.data.length;
+    out[q2+4] = sz >>> 24; out[q2+5] = (sz >>> 16) & 0xff; out[q2+6] = (sz >>> 8) & 0xff; out[q2+7] = sz & 0xff;
+    out.set(w.data, q2 + 10);
+    q2 += 10 + sz;
+  }
+  out.set(audio.subarray(p, framesEnd), q2);            // 原 padding
+  out.set(audio.subarray(framesEnd), q2 + (framesEnd - p)); // 音频数据
+  return out;
+}
+
 // FLAC 标签块构造（插入 STREAMINFO 之后）
 function buildFlacMeta(m, image) {
   const enc = new TextEncoder();
@@ -497,7 +561,11 @@ function assembleAudio(audio, fmt, m, image, embedTags) {
   if (!embedTags || !m) return audio;
   if (fmt === 'mp3') {
     const hasId3 = audio.length >= 3 && audio[0] === 0x49 && audio[1] === 0x44 && audio[2] === 0x33;
-    if (hasId3) return audio; // 已有标签不覆盖
+    if (hasId3) {
+      // 音频自带原生 ID3（网易云 Lavf 常见）：只补缺失的 APIC/文本帧，原生标签保留
+      const patched = injectMp3Id3(audio, m, image);
+      return patched !== null ? patched : audio;
+    }
     const tag = buildId3v3(m, image);
     return tag ? concat([tag, audio]) : audio;
   }
@@ -700,6 +768,10 @@ function u32le(buf, off) { return buf[off] | (buf[off+1] << 8) | (buf[off+2] << 
         if (!hasId3) {
           const tag = buildId3v3(m, hdr.image);
           if (tag) blobParts = [tag, ...parts];
+        } else {
+          // 音频自带原生 ID3（网易云 Lavf 常见）：只补缺失的 APIC/文本帧，原生标签保留
+          const patched = injectMp3Id3(first, m, hdr.image);
+          if (patched !== null) blobParts = [patched, ...parts.slice(1)];
         }
       } else if (fmt === 'flac') {
         const first = parts[0];

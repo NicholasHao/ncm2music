@@ -18,7 +18,7 @@ import base64
 import argparse
 import platform
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 # ================= AES-128-ECB（纯实现，FIPS-197 自检） =================
 def _gf_mul(a, b):
@@ -244,6 +244,54 @@ def build_id3v3(m, image):
         (tag_size >> 21) & 0x7F, (tag_size >> 14) & 0x7F, (tag_size >> 7) & 0x7F, tag_size & 0x7F])
     return header + frames + b"\x00" * 1024
 
+def _id3_frame(fid, body):
+    return fid + len(body).to_bytes(4, "big") + b"\x00\x00" + body
+
+def inject_mp3_id3(data, m, image):
+    """音频自带 ID3v2.3 头时，向现有标签补充缺失的帧（APIC 优先，其次文本帧）。
+    原生标签原样保留；结构异常或无可补充时返回 None（保持原数据）。"""
+    if data[:3] != b"ID3":
+        return None
+    if data[3] != 3:            # 只处理 v2.3（网易云 Lavf 实测版本）
+        return None
+    flags = data[5]
+    if flags & 0x80 or flags & 0x40:  # unsynchronisation / 压缩 / 扩展头，不安全不碰
+        return None
+    tag_size = (data[6] << 21) | (data[7] << 14) | (data[8] << 7) | data[9]
+    frames_end = 10 + tag_size
+    if frames_end > len(data):
+        return None
+    p = 10
+    have = set()
+    while p + 10 <= frames_end:
+        fid = data[p:p+4]
+        if not fid.strip(b"\x00"):
+            break  # 进入 padding
+        fsize = int.from_bytes(data[p+4:p+8], "big")
+        if fsize < 0 or p + 10 + fsize > frames_end:
+            return None  # 结构异常，放弃
+        have.add(fid)
+        p += 10 + fsize
+    want = []
+    if image and b"APIC" not in have:
+        mime = mime_of(image).encode()
+        want.append(_id3_frame(b"APIC", b"\x00" + mime + b"\x00\x03\x00" + image))
+    for fid, key in ((b"TIT2", "title"), (b"TPE1", "artist"), (b"TALB", "album")):
+        if m.get(key) and fid not in have:
+            body = b"\x01\xff\xfe" + m[key].encode("utf-16-le")
+            want.append(_id3_frame(fid, body))
+    if not want:
+        return None
+    addition = b"".join(want)
+    new_tag_size = tag_size + len(addition)
+    if new_tag_size >= 1 << 28:
+        return None
+    header = data[:6] + bytes([
+        (new_tag_size >> 21) & 0x7F, (new_tag_size >> 14) & 0x7F,
+        (new_tag_size >> 7) & 0x7F, new_tag_size & 0x7F])
+    # header + 现有帧 + 新帧 + 原有padding + 音频数据
+    return header + data[10:p] + addition + data[p:frames_end] + data[frames_end:]
+
 def build_flac_meta(m, image):
     blocks = b""
     vendor = b"ncm2music"
@@ -307,10 +355,18 @@ def convert_file_full(path, out_dir, embed_tags=True, delete_src=False):
     out_path = os.path.join(out_dir, name + "." + fmt)
 
     with open(out_path, "wb") as out:
-        if embed_tags and m and fmt == "mp3" and data[:3] != b"ID3":
-            tag = build_id3v3(m, image)
-            if tag:
-                out.write(tag)
+        if embed_tags and m and fmt == "mp3":
+            if data[:3] != b"ID3":
+                # 音频不带标签：全新写入完整 ID3（含封面）
+                tag = build_id3v3(m, image)
+                if tag:
+                    data = tag + data
+            else:
+                # 音频自带原生 ID3（常见于网易云 Lavf 灌过标签的歌）：
+                # 只补缺失的 APIC 封面帧和文本帧，原生标签原样保留
+                patched = inject_mp3_id3(data, m, image)
+                if patched is not None:
+                    data = patched
         elif embed_tags and m and fmt == "flac" and data[:4] == b"fLaC":
             newdata = inject_flac(data, m, image)
             data = newdata if newdata is not None else data

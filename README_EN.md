@@ -52,7 +52,7 @@ python ncm2music.py -m -o "D:\Converted" "D:\Netease\CloudMusic"
 The file isn't in NetEase's NCM format, or is corrupted. Note that some NetEase Cloud Music 3.0+ clients download plain MP3s — those don't need this tool at all; just rename them.
 
 **Q: The cover art is missing?**
-Some NCM files downloaded from NetEase Cloud Music 3.0+ no longer embed cover images (the audio still converts fine — there's just no image to write). You can add covers afterwards with a tagging tool such as MusicBrainz Picard.
+Two possible causes: (1) some NCM files downloaded from NetEase Cloud Music 3.0+ no longer embed cover images (the audio still converts fine — there's just no image to write; you can add covers afterwards with a tagging tool such as MusicBrainz Picard); (2) v1.0.0 had a bug where songs whose audio stream already carried a native ID3 tag (common for DJ/electronic tracks) skipped cover embedding entirely — fixed in v1.0.1, which parses the native tag and appends only the missing APIC/text frames without touching existing ones. Re-convert with the updated tool to get covers back.
 
 **Q: How fast is it?**
 Uses a 256-byte periodic keystream with bulk big-integer XOR: a 216 MB Hi-Res file converts in about 2 seconds; a typical 10 MB song is nearly instant.
